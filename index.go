@@ -3,6 +3,7 @@ package main
 
 import (
   "fmt"
+  "time"
   "net/http"
   "strings"
   htmlTemplate "html/template"
@@ -24,9 +25,15 @@ func pageHtmlIndex () {
 
 
 func serveIndex (res http.ResponseWriter, req * http.Request, records [] ActivityRecord) {
-  records_duration := uint(0)
+  // Iterate through records, and get the total number o
+  records_duration := time.Duration(0)
+  final_date       := time.Time {}
   for _, record := range records {
-    records_duration += record.duration_minutes
+    records_duration += record.duration
+    record_date := record.DayStart()
+    if record_date.After(final_date) {
+      final_date = record_date
+    }
   }
 
   main_builder := strings.Builder {}
@@ -39,7 +46,9 @@ func serveIndex (res http.ResponseWriter, req * http.Request, records [] Activit
   main_builder.WriteString(`<figcaption>`)
   main_builder.WriteString(``)
   fmt.Fprintf(&main_builder, "<p>Number of records: %d\n</p>", len(records))
-  fmt.Fprintf(&main_builder, "<p>Total duration: %s\n</p>", minutesFormatDuration(records_duration))
+  fmt.Fprintf(&main_builder, "<p>Total duration: %s\n</p>", records_duration)
+  y, m, d := final_date.Date()
+  fmt.Fprintf(&main_builder, "<p>Final date: %d-%d-%d\n</p>", y, m, d)
   main_builder.WriteString(`</figcaption>`)
   main_builder.WriteString("</figure>")
 
@@ -62,13 +71,17 @@ func serveIndex (res http.ResponseWriter, req * http.Request, records [] Activit
 
       figure {
         margin: 0;
+        padding: 1em;
         display: flex;
-        flex-direction: column;
-        max-height: 95dvh;
+        flex-direction: row wrap;
+        justify-content: center;
+
         &> svg {
           flex-grow: 1;
           object-fit: contain;
           object-position: top;
+          max-height: 80dvh;
+          width: auto;
         }
       }
 
