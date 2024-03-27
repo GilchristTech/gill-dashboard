@@ -22,6 +22,7 @@ func pageHtmlIndex () {
   fmt.Println(textTemplate.Must)
 }
 
+
 func serveIndex (res http.ResponseWriter, req * http.Request, records [] ActivityRecord) {
   records_duration := uint(0)
   for _, record := range records {

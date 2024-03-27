@@ -26,16 +26,40 @@ func main () {
   if err != nil { return }
   defer csv_io_reader.Close()
 
-  after_time   := time.Now().AddDate(0, 0, -7)
-  records, err := SttCsvReadRange(csv_io_reader, &after_time, nil)
+  // Start by getting a year of records (year_records), determine when the
+  // end-date of the downloaded amount is, and filter the final week of records
+  // from there.
+
+  today_start  := time.Now().Truncate(24 * time.Hour)
+
+  year_window_start := today_start.AddDate(-1, 0, 0)
+  year_records, err := SttCsvReadRange(csv_io_reader, &year_window_start, nil)
+  fmt.Println("Number of records, Year:", len(year_records))
 
   if err != nil {
     log.Fatalln("STT parsing error:", err)
   }
 
-  records = ActivityRecordsFilterCategories(records, "Productivity", "Development")
+  // Determine the final record date. That will be the last date of the
+  // week-long time window for the last-week metric.
+  //
+  var final_date time.Time = time.Time {}
+  for _, record := range year_records {
+    record_date := record.DayStart()
+    if record_date.After(final_date) {
+      final_date = record_date
+    }
+  }
 
-  fmt.Println("Number of records:", len(records))
+  week_start := final_date.AddDate(0, 0, -7)
+
+  records := ActivityRecordsFilterTimeRange(year_records, &week_start, nil)
+  fmt.Println("Number of records, Final Week:", len(records))
+  records  = ActivityRecordsFilterCategories(
+      records, "Productivity", "Development",
+    )
+
+  fmt.Println("Number of records, Week Productivity:", len(records))
   fmt.Println()
 
   http.HandleFunc("/", func (res http.ResponseWriter, req * http.Request) {

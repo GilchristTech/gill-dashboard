@@ -29,7 +29,14 @@ var STT_CSV_COLUMNS [] string = [] string {
 }
 
 
+var SttInitialized bool          = false
+var STT_DAY_OFFSET time.Duration = 0
+var STT_TIMEZONE * time.Location = nil
+
 type ActivityRecord struct {
+  /*
+    Column data, as it exists in a STT export CSV file, unmarshalled
+  */
   activity_name    string;
   time_started     time.Time;
   time_ended       time.Time;
@@ -39,6 +46,36 @@ type ActivityRecord struct {
   duration         time.Duration;
   duration_minutes uint;
 }
+
+
+func SttInit () (err error) {
+  day_offset_str, found := os.LookupEnv("STT_DAY_OFFSET")
+  if found {
+    STT_DAY_OFFSET, err = time.ParseDuration(day_offset_str)
+    if err != nil { return err }
+  }
+
+  timezone_str, found := os.LookupEnv("STT_TIMEZONE")
+  if found {
+    STT_TIMEZONE, err = time.LoadLocation(timezone_str)
+    if err != nil { return err }
+  }
+
+  SttInitialized = true
+  return nil
+}
+
+
+func DayStart (datetime time.Time) (time.Time) {
+  y, m, d := datetime.Add(-STT_DAY_OFFSET).Date()
+  return time.Date(y, m, d, 0, 0, 0, 0, datetime.Location())
+}
+
+
+func (record *ActivityRecord) DayStart () time.Time {
+  return DayStart(record.time_started)
+}
+
 
 type ActivityRecordChartOptions struct {
   width  string;
@@ -85,6 +122,11 @@ func SttSync () (err error, was_downloaded bool) {
     or if the local copy is at least an hour old.
   */
 
+  if SttInitialized == false {
+    err := SttInit()
+    if err != nil { return err, false }
+  }
+
   stt_url, ok := os.LookupEnv("STT_URL")
 
   if ! ok {
@@ -113,8 +155,8 @@ func SttSync () (err error, was_downloaded bool) {
 
   if do_download {
     fmt.Println("Downloading STT records...")
-    records_num_bytes, err := downloadFile(stt_path, stt_url)
 
+    records_num_bytes, err := downloadFile(stt_path, stt_url)
     if err != nil {
       return fmt.Errorf("Could not download STT records:", err), false
     }
@@ -178,14 +220,28 @@ func SttCsvReadRange (
     // the ActivityRecord struct for the records array to prevent extraneuous
     // parsing when data is filtered.
 
-    time_started, time_started_err := time.Parse(time.DateTime, row[column_indices["time started"]])
-    time_ended,   time_ended_err   := time.Parse(time.DateTime, row[column_indices["time ended"]])
+    var time_started,     time_ended      time.Time
+    var time_started_err, time_ended_err  error
+
+    if STT_TIMEZONE == nil {
+      time_started, time_started_err = time.Parse(time.DateTime, row[column_indices["time started"]])
+      time_ended,   time_ended_err   = time.Parse(time.DateTime, row[column_indices["time ended"]])
+    } else {
+      time_started, time_started_err = time.ParseInLocation(
+          time.DateTime, row[column_indices["time started"]], STT_TIMEZONE,
+        )
+      time_ended, time_ended_err = time.ParseInLocation(
+          time.DateTime, row[column_indices["time ended"]], STT_TIMEZONE,
+        )
+    }
 
     if time_started_err != nil { continue }
     if time_ended_err   != nil { continue }
 
-    if after_date  != nil && time_started.Before(*after_date) { continue }
-    if before_date != nil && time_started.After(*before_date) { continue }
+    // Filter for records whose day is within the date range
+    day_start := DayStart(time_started)
+    if after_date  != nil && day_start.Before(*after_date) { continue }
+    if before_date != nil && day_start.After(*before_date) { continue }
 
     // Create the ActivityRecord struct
 
@@ -229,21 +285,39 @@ func SttCsvReadRange (
 
 
 func ActivityRecordsFilterCategories (records [] ActivityRecord, categories ...string) [] ActivityRecord {
-  filtered := make([] ActivityRecord, 0)
+  filtered := make([] ActivityRecord, len(records))
+  count    := 0
 
   RECORD_SEARCH:
   for _, record := range records {
     for _, record_category := range record.categories {
       for _, filter_category := range categories {
         if record_category == filter_category {
-          filtered = append(filtered, record)
+          filtered[count] = record
+          count++
           continue RECORD_SEARCH
         }
       }
     }
   }
 
-  return filtered
+  return filtered[:count]
+}
+
+
+func ActivityRecordsFilterTimeRange (records [] ActivityRecord, after_date, before_date * time.Time) [] ActivityRecord {
+  filtered := make([] ActivityRecord, len(records))
+  count    := 0
+
+  for _, record := range records {
+    date := record.DayStart()
+    if after_date  != nil && date.Before(*after_date) { continue }
+    if before_date != nil && date.After(*before_date) { continue }
+    filtered[count] = record
+    count++
+  }
+
+  return filtered[:count]
 }
 
 
@@ -279,7 +353,7 @@ func ActivityRecordsPlotPieChart (records [] ActivityRecord, options * ActivityR
   }
 
   //
-  // Generate an SVG string
+  // Generate an SVG root and styles
   //
 
   var pie_svg  strings.Builder
@@ -317,13 +391,8 @@ func ActivityRecordsPlotPieChart (records [] ActivityRecord, options * ActivityR
     angle     float64;
     center_t  float64;
 
-    start_t   float64;
-    start_x   float64;
-    start_y   float64;
-
-    end_t     float64;
-    end_x     float64;
-    end_y     float64;
+    start_t, start_x, start_y float64;
+    end_t,   end_x,   end_y   float64;
 
     fill       string;
   }
@@ -361,6 +430,10 @@ func ActivityRecordsPlotPieChart (records [] ActivityRecord, options * ActivityR
     pie = append(pie, slice)
   }
 
+  //
+  // Generate SVG slice paths
+  //
+
   for _, slice := range pie {
     var large_arc_flag string = "1"
     if slice.end_t - slice.start_t <= math.Pi {
@@ -382,8 +455,11 @@ func ActivityRecordsPlotPieChart (records [] ActivityRecord, options * ActivityR
       slice.fill,
     )
   }
-
   fmt.Fprintf(&pie_svg, "\n")
+
+  //
+  // Generate SVG pie slice text labels
+  //
 
   for _, slice := range pie {
     text_x := math.Cos(slice.center_t) * 1.5
