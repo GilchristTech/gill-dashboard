@@ -9,19 +9,22 @@ import (
   "net/http"
 
   "github.com/joho/godotenv"
+  
+  "gill-dashboard/pkg/stt_records"
+  "gill-dashboard/web"
 )
 
-var records [] ActivityRecord;
+var records [] stt_records.ActivityRecord;
 
 func main () {
   godotenv.Load()  // error silently
 
-  err, _ := SttSync()
+  err, _ := stt_records.SttSync()
   if err != nil {
     log.Fatalln("sync error:", err)
   }
 
-  stt_path := SttGetPath()
+  stt_path := stt_records.SttGetPath()
   csv_io_reader, err := os.Open(stt_path)
   if err != nil { return }
   defer csv_io_reader.Close()
@@ -33,7 +36,7 @@ func main () {
   today_start  := time.Now().Truncate(24 * time.Hour)
 
   year_window_start := today_start.AddDate(-1, 0, 0)
-  year_records, err := SttCsvReadRange(csv_io_reader, &year_window_start, nil)
+  year_records, err := stt_records.SttCsvReadRange(csv_io_reader, &year_window_start, nil)
   fmt.Println("Number of records, Year:", len(year_records))
 
   if err != nil {
@@ -53,9 +56,9 @@ func main () {
 
   week_start := final_date.AddDate(0, 0, -7)
 
-  records := ActivityRecordsFilterTimeRange(year_records, &week_start, nil)
+  records := stt_records.ActivityRecordsFilterTimeRange(year_records, &week_start, nil)
   fmt.Println("Number of records, Final Week:", len(records))
-  records  = ActivityRecordsFilterCategories(
+  records  = stt_records.ActivityRecordsFilterCategories(
       records, "Productivity", "Development",
     )
 
@@ -63,19 +66,18 @@ func main () {
   fmt.Println()
 
   http.HandleFunc("/", func (res http.ResponseWriter, req * http.Request) {
-    serveIndex(res, req, records)
+    web.ServeIndex(res, req, records)
   })
 
   http.HandleFunc("/img.svg", func (res http.ResponseWriter, req * http.Request) {
     svg_string_builder := strings.Builder {}
     svg_string_builder.WriteString(
-        ActivityRecordsPlotPieChart(records, nil),
+        stt_records.ActivityRecordsPlotPieChart(records, nil),
       )
 
     res.Header().Set("Content-Type", "image/svg+xml")
     fmt.Fprintf(res, "%s", svg_string_builder.String())
   })
 
-  fmt.Println("Server listening on port 8080...")
   http.ListenAndServe(":8080", nil)
 }

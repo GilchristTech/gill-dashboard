@@ -1,14 +1,26 @@
-package main
+package web
 
 
 import (
+  "embed"
   "fmt"
   "time"
   "net/http"
   "strings"
   htmlTemplate "html/template"
   textTemplate "text/template"
+
+  stt "gill-dashboard/pkg/stt_records"
 )
+
+//go:embed templates/*.html
+var templates       embed.FS
+var base_template * textTemplate.Template
+
+func init () {
+  fmt.Println("Loading template")
+  base_template = textTemplate.Must(textTemplate.ParseFS(templates, "templates/base.html"))
+}
 
 
 type BaseTemplate struct {
@@ -24,12 +36,12 @@ func pageHtmlIndex () {
 }
 
 
-func serveIndex (res http.ResponseWriter, req * http.Request, records [] ActivityRecord) {
+func ServeIndex (res http.ResponseWriter, req * http.Request, records [] stt.ActivityRecord) {
   // Iterate through records, and get the total number o
   records_duration := time.Duration(0)
   final_date       := time.Time {}
   for _, record := range records {
-    records_duration += record.duration
+    records_duration += record.Duration
     record_date := record.DayStart()
     if record_date.After(final_date) {
       final_date = record_date
@@ -39,9 +51,9 @@ func serveIndex (res http.ResponseWriter, req * http.Request, records [] Activit
   main_builder := strings.Builder {}
   main_builder.WriteString(`<h1>Productivity: last seven days</h1>`)
   main_builder.WriteString("<figure>\n")
-  main_builder.WriteString(ActivityRecordsPlotPieChart(records, &ActivityRecordChartOptions {
-    width: "100%",
-    height: "100%",
+  main_builder.WriteString(stt.ActivityRecordsPlotPieChart(records, &stt.ActivityRecordChartOptions {
+    Width: "100%",
+    Height: "100%",
   }))
   main_builder.WriteString(`<figcaption>`)
   main_builder.WriteString(``)
@@ -91,12 +103,6 @@ func serveIndex (res http.ResponseWriter, req * http.Request, records [] Activit
     </style>`,
   }
 
-  template, err := textTemplate.ParseFiles("./templates/base.html")
-  if err != nil {
-    http.Error(res, err.Error(), 500)
-    return
-  }
-
-  template.Execute(res, template_data)
+  base_template.Execute(res, template_data)
   // http.ServeFile(res, req, "index.html")
 }

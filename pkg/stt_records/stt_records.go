@@ -1,4 +1,4 @@
-package main
+package stt_records;
 
 
 import (
@@ -37,14 +37,14 @@ type ActivityRecord struct {
   /*
     Column data, as it exists in a STT export CSV file, unmarshalled
   */
-  activity_name    string;
-  time_started     time.Time;
-  time_ended       time.Time;
-  comment          string;
-  categories       [] string;
-  record_tags      string;
-  duration         time.Duration;
-  duration_minutes uint;
+  Activity_name    string;
+  Time_started     time.Time;
+  Time_ended       time.Time;
+  Comment          string;
+  Categories       [] string;
+  Record_tags      string;
+  Duration         time.Duration;
+  Duration_minutes uint;
 }
 
 
@@ -73,13 +73,13 @@ func DayStart (datetime time.Time) (time.Time) {
 
 
 func (record *ActivityRecord) DayStart () time.Time {
-  return DayStart(record.time_started)
+  return DayStart(record.Time_started)
 }
 
 
 type ActivityRecordChartOptions struct {
-  width  string;
-  height string;
+  Width  string;
+  Height string;
 }
 
 
@@ -267,14 +267,14 @@ func SttCsvReadRange (
     var categories [] string = strings.Split(row[column_indices["categories"]], ", ")
 
     record := ActivityRecord {
-      activity_name:    activity_name,
-      comment:          comment,
-      time_started:     time_started,
-      time_ended:       time_ended,
-      categories:       categories,
-      record_tags:      record_tags,
-      duration:         duration,
-      duration_minutes: duration_minutes,
+      Activity_name:    activity_name,
+      Comment:          comment,
+      Time_started:     time_started,
+      Time_ended:       time_ended,
+      Categories:       categories,
+      Record_tags:      record_tags,
+      Duration:         duration,
+      Duration_minutes: duration_minutes,
     }
 
     records = append(records, record)
@@ -290,7 +290,7 @@ func ActivityRecordsFilterCategories (records [] ActivityRecord, categories ...s
 
   RECORD_SEARCH:
   for _, record := range records {
-    for _, record_category := range record.categories {
+    for _, record_category := range record.Categories {
       for _, filter_category := range categories {
         if record_category == filter_category {
           filtered[count] = record
@@ -330,8 +330,8 @@ func ActivityRecordsPlotPieChart (records [] ActivityRecord, options * ActivityR
 
   if options == nil {
     options = & ActivityRecordChartOptions {
-      width: "400",
-      height: "220",
+      Width: "400",
+      Height: "220",
     }
   }
 
@@ -339,8 +339,8 @@ func ActivityRecordsPlotPieChart (records [] ActivityRecord, options * ActivityR
   var records_duration uint = 0
 
   for _, record := range records {
-    name                     := record.activity_name
-    record_duration          := record.duration_minutes
+    name                     := record.Activity_name
+    record_duration          := record.Duration_minutes
     activity_duration, found := activity_minutes[name]
 
     if found {
@@ -358,7 +358,7 @@ func ActivityRecordsPlotPieChart (records [] ActivityRecord, options * ActivityR
 
   var pie_svg  strings.Builder
 
-  if options.width != "" || options.height != "" {
+  if options.Width != "" || options.Height != "" {
     fmt.Fprintf(
       &pie_svg,
       `<svg width="%s" height="%s" viewBox="-2 -1.1 4 2.2" xmlns="http://www.w3.org/2000/svg">` + "\n" +
@@ -366,8 +366,8 @@ func ActivityRecordsPlotPieChart (records [] ActivityRecord, options * ActivityR
       "    path { transition: all 0.25s; stroke-width: 0.01; stroke: #8880; }\n " +
       "    path:hover { transform: scale(1.075); filter: brightness(1.1); stroke-width: 0.01; stroke: #8888; }\n" +
       "  </style>\n",
-      options.width,
-      options.height,
+      options.Width,
+      options.Height,
     )
   } else {
     fmt.Fprintf(
